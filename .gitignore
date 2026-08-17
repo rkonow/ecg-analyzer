@@ -1,0 +1,11 @@
+/.claude/
+/doable.do/
+node_modules/
+dist/
+build/
+.cache/
+.turbo/
+target/
+coverage/
+tmp/
+temp/
