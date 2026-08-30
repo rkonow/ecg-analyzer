@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ECG report module — dev harness</title>
+<style>
+  html, body { margin: 0; background: #0a0a0b; }
+  #dev-toolbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 14px; background: #000; border-bottom: 1px solid #333;
+    font-family: system-ui, sans-serif; font-size: 13px; color: #ddd;
+  }
+  #dev-toolbar button {
+    font: inherit; padding: 6px 10px; border-radius: 4px;
+    border: 1px solid #555; background: #1a1a1a; color: #fff; cursor: pointer;
+  }
+  #dev-toolbar button[aria-pressed="true"] { border-color: #3987e5; color: #3987e5; }
+  #dev-status { color: #888; font-family: ui-monospace, monospace; }
+  @media print {
+    #dev-toolbar { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="dev-toolbar">
+    <strong>ECG report — dev harness</strong>
+    <button id="btn-healthy" type="button">Healthy fixture</button>
+    <button id="btn-degraded" type="button">Degraded fixture</button>
+    <button id="btn-stats-only" type="button">renderStats only</button>
+    <button id="btn-waveform-only" type="button">renderWaveform only</button>
+    <span id="dev-status"></span>
+  </div>
+  <div id="report-root"></div>
+  <script type="module" src="./dev.js"></script>
+</body>
+</html>
