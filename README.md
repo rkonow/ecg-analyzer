@@ -123,6 +123,20 @@ This is the one place in the app that talks to a server:
   `api.anthropic.com`. It is never bundled, logged, committed, or sent
   anywhere else. The app ships with no key baked in — without one, the
   "Analyze" button stays disabled.
+- **Local `.env` override (optional, dev convenience).** Copy
+  `.env.example` to `.env` at the repo root and set `ANTHROPIC_API_KEY=...`
+  to have the settings field pre-filled automatically instead of retyping
+  it every reload. `.env` is gitignored and never committed. At startup
+  the app does a same-origin `fetch('./.env')` and parses simple
+  `KEY=VALUE` lines itself (no library) — if the file is missing (a fresh
+  clone won't have one) or the fetch fails for any reason (e.g. opened via
+  `file://`, where local fetches are typically blocked), it fails silently
+  and falls back to the `localStorage`/settings-field flow exactly as if
+  `.env` didn't exist. **This is safe for local `python3 -m http.server`
+  use, but not for public deployment**: a static file server serves any
+  file in its directory, dotfiles included, so `.env` would leak your key
+  if you ever push this repo as-is to a public static host. If you deploy
+  this app publicly, make sure your deploy step excludes `.env`.
 - **Opt-in per use.** Nothing is sent until you click **"Analyze with
   Claude AI (sends your photo to Anthropic)"** — the exact disclosure is
   visible above the button before you click it.
@@ -135,7 +149,8 @@ This is the one place in the app that talks to a server:
   than free text, and a prompt that explicitly asks for descriptive
   observations only — never a diagnosis — and to say plainly when the
   image is unreadable. `src/ai/keyStore.js` owns the `localStorage`
-  read/write for the key and model choice.
+  read/write for the key and model choice, plus the optional `.env`
+  fetch/parse described above.
 
 ## Browser support
 

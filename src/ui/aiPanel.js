@@ -1,5 +1,12 @@
 import { interpretEcgImage } from "../ai/interpret.js";
-import { getApiKey, setApiKey, getModel, setModel, AVAILABLE_MODELS } from "../ai/keyStore.js";
+import {
+  getApiKey,
+  setApiKey,
+  getModel,
+  setModel,
+  AVAILABLE_MODELS,
+  loadEnvApiKeyOverride,
+} from "../ai/keyStore.js";
 import { PULSE_LOADER_SVG, ALERT_ICON_SVG } from "./status.js";
 
 const TRIGGER_LABEL = "Analyze with Claude AI (sends your photo to Anthropic)";
@@ -46,10 +53,23 @@ export function createAiPanel(root) {
   const apiKeyInput = root.querySelector("#ai-api-key");
   const modelSelect = root.querySelector("#ai-model");
   const clearKeyBtn = root.querySelector(".ai-panel__clear-key");
+  const keyHintEl = root.querySelector(".ai-panel__hint");
   const bodyEl = root.querySelector(".ai-panel__body");
 
   apiKeyInput.value = getApiKey();
   modelSelect.value = getModel();
+
+  // Local-dev convenience: a gitignored .env file next to index.html can
+  // supply a default key so it doesn't need retyping into this field every
+  // reload. Fire-and-forget — see loadEnvApiKeyOverride() for why this is
+  // always safe to no-op (missing file, blocked fetch, etc).
+  loadEnvApiKeyOverride().then((envKey) => {
+    if (!envKey) return;
+    setApiKey(envKey);
+    apiKeyInput.value = envKey;
+    keyHintEl.textContent = "Loaded from the local .env file. Edit here to override for this browser.";
+    renderIdle();
+  });
 
   settingsToggle.addEventListener("click", () => {
     settingsEl.hidden = !settingsEl.hidden;

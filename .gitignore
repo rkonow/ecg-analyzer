@@ -9,3 +9,7 @@ target/
 coverage/
 tmp/
 temp/
+
+# Local-only Anthropic API key for dev convenience (see README: AI interpretation).
+# Never commit this — it is served as a plain static file by `python3 -m http.server`.
+/.env

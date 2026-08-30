@@ -51,3 +51,37 @@ export function setModel(model) {
     // ignore
   }
 }
+
+// Local-dev convenience: if a gitignored .env file is served alongside the
+// app (repo root, KEY=VALUE lines), use its ANTHROPIC_API_KEY as the default
+// so a developer isn't retyping their key into the settings field every
+// reload. Optional in every sense — a 404 (no .env on this deploy), a
+// fetch() failure (e.g. opened via file://, where local fetches are
+// blocked), or a missing/blank key all resolve to null silently. This must
+// never become a hard dependency for the rest of the app.
+export async function loadEnvApiKeyOverride() {
+  try {
+    const response = await fetch("./.env");
+    if (!response.ok) return null;
+    const key = parseEnvFile(await response.text()).ANTHROPIC_API_KEY;
+    return key ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseEnvFile(text) {
+  const values = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eqIndex = line.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = line.slice(0, eqIndex).trim();
+    let value = line.slice(eqIndex + 1).trim();
+    const isQuoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
+    if (isQuoted && value.length >= 2) value = value.slice(1, -1);
+    if (key) values[key] = value;
+  }
+  return values;
+}
