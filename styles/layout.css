@@ -1,0 +1,130 @@
+/* ==========================================================================
+   Page shell: header / main / footer
+   ========================================================================== */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* -- header: instrument nameplate -- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-faint);
+  background: rgba(10, 11, 10, 0.85);
+  backdrop-filter: blur(6px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-brand__mark {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.app-brand__name {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-brand__version {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* -- main -- */
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.panel-body {
+  padding: 20px;
+}
+
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-faint);
+}
+
+.section-divider::before,
+.section-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* -- footer -- */
+
+.app-footer {
+  border-top: 1px solid var(--border-faint);
+  padding: 20px 24px 32px;
+}
+
+.app-footer__inner {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* -- results view sections toggle via [hidden] -- */
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 560px) {
+  .app-main {
+    padding: 32px 16px 72px;
+    gap: 32px;
+  }
+
+  .app-header {
+    padding: 14px 16px;
+  }
+}
