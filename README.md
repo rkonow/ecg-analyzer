@@ -17,8 +17,9 @@ python3 -m http.server 8000
 Then open `http://localhost:8000`. Any static file server works — the app
 is plain HTML/CSS/JS served as-is.
 
-All processing happens in the browser. The uploaded image is never sent to
-a server; there is no backend.
+All processing happens in the browser by default. The uploaded image is
+never sent to a server; there is no backend — with one explicit exception,
+described below.
 
 ## Architecture
 
@@ -58,7 +59,9 @@ development — not just once all four pieces exist.
 index.html            single-page shell: dropzone + calibration + results
 src/app.js             pipeline orchestrator (dynamic imports, fallbacks)
 src/ui/                dropzone, validation, decode/EXIF, status, calibration,
-                        fixtures — file ownership: app shell & upload UI
+                        AI panel UI, fixtures — file ownership: app shell & upload UI
+src/ai/                Claude API client + local key storage for the optional
+                        AI interpretation panel — file ownership: app shell & upload UI
 src/vision/extract.js  image → waveform trace extraction (owned separately)
 src/analysis/analyze.js waveform → rhythm/interval analysis (owned separately)
 src/report/render.js   report/visualization rendering (owned separately)
@@ -103,6 +106,36 @@ export function renderStats(container, analysis) -> void
 `{ paperSpeedMmPerSec, gainMmPerMv, samplingRateHz }` — defaults `25`,
 `10`, `500`. These exist because phone photos of ECG strips often lack a
 reliable printed scale.
+
+## AI interpretation (optional, opt-in)
+
+The results view includes a separate "AI interpretation (Claude)" panel.
+It is a supplement, not a replacement: the local pipeline above keeps its
+own numbers, and this panel shows a second, independently-generated,
+descriptive-only read of the same photo — clearly labeled apart from the
+local report.
+
+This is the one place in the app that talks to a server:
+
+- **Bring your own key.** Paste your own Anthropic API key into the
+  panel's settings. It's stored only in `localStorage`, in your browser,
+  and is read only to set the `x-api-key` header on a direct request to
+  `api.anthropic.com`. It is never bundled, logged, committed, or sent
+  anywhere else. The app ships with no key baked in — without one, the
+  "Analyze" button stays disabled.
+- **Opt-in per use.** Nothing is sent until you click **"Analyze with
+  Claude AI (sends your photo to Anthropic)"** — the exact disclosure is
+  visible above the button before you click it.
+- **Model choice.** Defaults to Claude Opus 5; Claude Sonnet 5 and Claude
+  Haiku 4.5 are available as cheaper alternatives in the same settings.
+- **Implementation.** `src/ai/interpret.js` calls `POST
+  /v1/messages` directly via `fetch()` (no SDK, matching the rest of the
+  app's no-build-step constraint), with a forced tool call
+  (`report_ecg_interpretation`) so the response is structured JSON rather
+  than free text, and a prompt that explicitly asks for descriptive
+  observations only — never a diagnosis — and to say plainly when the
+  image is unreadable. `src/ai/keyStore.js` owns the `localStorage`
+  read/write for the key and model choice.
 
 ## Browser support
 

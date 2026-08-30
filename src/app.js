@@ -3,6 +3,7 @@ import { createDropzone } from "./ui/dropzone.js";
 import { decodeImageFile } from "./ui/decode.js";
 import { createStatusController } from "./ui/status.js";
 import { createCalibrationPanel } from "./ui/calibration.js";
+import { createAiPanel } from "./ui/aiPanel.js";
 import * as fixtures from "./ui/fixtures.js";
 
 const dropzoneEl = document.getElementById("dropzone");
@@ -15,6 +16,7 @@ const noticesSlotEl = document.getElementById("notices-slot");
 const reportRootEl = document.getElementById("report-root");
 const replaceBtn = document.getElementById("replace-btn");
 const calibrationFieldsEl = document.getElementById("calibration-fields");
+const aiPanelRootEl = document.getElementById("ai-panel-root");
 
 const status = createStatusController({
   ledEl: document.querySelector(".status-led"),
@@ -22,6 +24,7 @@ const status = createStatusController({
 });
 
 const calibration = createCalibrationPanel(calibrationFieldsEl);
+const aiPanel = createAiPanel(aiPanelRootEl);
 
 createDropzone(dropzoneEl, { onFile: handleFile });
 
@@ -64,6 +67,7 @@ async function handleFile(file) {
     showResultsView();
     renderNotices([...(extraction.warnings || []), ...(analysis.warnings || [])]);
     await runRenderReport(reportRootEl, { analysis, extraction, imageBitmap: decoded.imageBitmap });
+    aiPanel.setImage(decoded.canvas);
 
     status.setReady();
   } catch (err) {
@@ -125,6 +129,7 @@ function resetToUpload() {
   uploadViewEl.hidden = false;
   reportRootEl.innerHTML = "";
   noticesSlotEl.innerHTML = "";
+  aiPanel.reset();
   status.setIdle();
 }
 

@@ -9,13 +9,15 @@ const LED_LABEL = {
   error: "Error",
 };
 
-const PULSE_LOADER_SVG = `
+// Exported so other loading states (e.g. the AI interpretation panel) can
+// reuse the same calibration-pulse motif instead of a generic spinner.
+export const PULSE_LOADER_SVG = `
   <svg class="pulse-loader" width="30" height="16" viewBox="0 0 60 32" fill="none" aria-hidden="true">
     <path d="M0 24 H14 L18 24 L22 6 L28 28 L32 24 H60" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
   </svg>
 `;
 
-const ALERT_ICON_SVG = `
+export const ALERT_ICON_SVG = `
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="1.8" />
     <path d="M12 7.5 V13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
