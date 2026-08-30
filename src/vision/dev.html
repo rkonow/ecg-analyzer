@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>vision pipeline self-test</title>
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #14161a; color: #e6e6e6; margin: 0; padding: 16px 24px 60px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #9aa0a6; margin-top: 0; }
+  .scenario { background: #1d2025; border: 1px solid #2c3036; border-radius: 8px; padding: 14px 16px; margin-bottom: 22px; }
+  .scenario h2 { font-size: 15px; margin: 0 0 6px; display:flex; align-items:center; gap:10px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .badge.pass { background: #1e4620; color: #7ee787; }
+  .badge.fail { background: #4a1e1e; color: #ff8b8b; }
+  .badge.warn { background: #4a3d1e; color: #ffd27e; }
+  .meta { font-size: 12px; color: #9aa0a6; margin-bottom: 10px; }
+  .canvases { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+  .canvases figure { margin: 0; background: #0d0f12; padding: 4px; border-radius: 4px; }
+  .canvases figcaption { font-size: 10px; color: #9aa0a6; text-align: center; margin-top: 2px; }
+  canvas { display: block; max-width: 340px; height: auto; background: #000; }
+  .metrics { font-size: 12px; line-height: 1.6; }
+  .metrics b { color: #fff; }
+  ul.warnings { font-size: 11px; color: #ffd27e; margin: 6px 0 0; padding-left: 18px; }
+  #summary { position: sticky; top: 0; background: #14161a; padding: 8px 0; z-index: 5; border-bottom: 1px solid #2c3036; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>src/vision pipeline self-test</h1>
+<p class="sub">Generates synthetic ECG images with known ground truth, runs the full extraction pipeline, and compares recovered vs. ground-truth waveforms.</p>
+<div id="summary">Running...</div>
+<div id="results"></div>
+
+<script type="module">
+import { extractTraces } from './extract.js';
+import { preprocess } from './preprocess.js';
+import { detectGrid } from './grid.js';
+import { extractLeadSeries } from './trace.js';
+import { renderSyntheticImage, generateGroundTruth, drawGrid, drawTrace, addNoise, mulberry32 } from './testkit/synth.js';
+import { bestAlignedMatch } from './testkit/compare.js';
+
+const resultsEl = document.getElementById('results');
+const summaryEl = document.getElementById('summary');
+
+function canvasFromGray(gray, width, height) {
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for (let i = 0; i < gray.length; i++) {
+    const v = Math.max(0, Math.min(255, gray[i]));
+    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function canvasFromMask(mask, width, height) {
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for (let i = 0; i < mask.length; i++) {
+    const on = mask[i] > 0;
+    img.data[i * 4] = on ? 60 : 10;
+    img.data[i * 4 + 1] = on ? 255 : 10;
+    img.data[i * 4 + 2] = on ? 120 : 14;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function canvasFromImageData(imageData) {
+  const c = document.createElement('canvas');
+  c.width = imageData.width; c.height = imageData.height;
+  c.getContext('2d').putImageData(imageData, 0, 0);
+  return c;
+}
+
+function plotComparison(recovered, gtSegment, width = 700, height = 160) {
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0d0f12';
+  ctx.fillRect(0, 0, width, height);
+  const all = [...recovered, ...gtSegment];
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const span = (hi - lo) || 1;
+  const toY = (v) => height - 8 - ((v - lo) / span) * (height - 16);
+  const drawSeries = (series, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    series.forEach((v, i) => {
+      const x = (i / (series.length - 1)) * (width - 4) + 2;
+      const y = toY(v);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+  drawSeries(gtSegment, '#ffd27e');
+  drawSeries(recovered, '#7ee787');
+  ctx.fillStyle = '#9aa0a6';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('ground truth (amber)  vs  recovered (green)', 6, 12);
+  return c;
+}
+
+function addFigure(container, canvas, caption) {
+  const fig = document.createElement('figure');
+  fig.appendChild(canvas);
+  const cap = document.createElement('figcaption');
+  cap.textContent = caption;
+  fig.appendChild(cap);
+  container.appendChild(fig);
+}
+
+function zScore(arr) {
+  let m = 0; for (const v of arr) m += v; m /= arr.length;
+  let s = 0; for (const v of arr) s += (v - m) * (v - m);
+  const sd = Math.sqrt(s / arr.length) || 1;
+  return arr.map((v) => (v - m) / sd);
+}
+
+const CORR_PASS_THRESHOLD = 0.85;
+
+function runScenario(name, expectations, buildFn) {
+  const section = document.createElement('div');
+  section.className = 'scenario';
+  const { imageData, groundTruth, meta, options } = buildFn();
+
+  let result;
+  let error = null;
+  try {
+    result = extractTraces(imageData, options || {});
+  } catch (e) {
+    error = e;
+  }
+
+  let pre, grid, traceResult;
+  try {
+    pre = preprocess(imageData, options || {});
+    grid = detectGrid(pre.gray, pre.width, pre.height, pre.rotationDeg);
+    traceResult = extractLeadSeries(pre, grid);
+  } catch (e) {
+    // intermediate visualization is best-effort
+  }
+
+  const canvases = document.createElement('div');
+  canvases.className = 'canvases';
+  addFigure(canvases, canvasFromImageData(imageData), 'synthetic input');
+  if (pre) addFigure(canvases, canvasFromGray(pre.gray, pre.width, pre.height), `preprocessed (rot ${pre.rotationDeg.toFixed(1)}°)`);
+  if (traceResult) addFigure(canvases, canvasFromMask(traceResult.mask, pre.width, pre.height), `trace mask (${traceResult.leads.length} band(s))`);
+  if (result && result.debug.overlay) addFigure(canvases, canvasFromImageData(result.debug.overlay), 'debug overlay');
+
+  let badgeClass = 'fail';
+  let badgeText = 'FAIL';
+  let metricsHtml = '';
+  const compareRows = [];
+
+  if (error) {
+    metricsHtml = `<div class="metrics">Threw: ${error.message}</div>`;
+  } else if (!result.ok || result.leads.length === 0) {
+    badgeClass = expectations.expectFailureOk ? 'warn' : 'fail';
+    badgeText = expectations.expectFailureOk ? 'GRACEFUL-DEGRADE' : 'FAIL (no leads)';
+    metricsHtml = '<div class="metrics">No leads extracted.</div>';
+  } else {
+    const gtLists = Array.isArray(groundTruth) ? groundTruth : [groundTruth];
+    let allPass = true;
+    result.leads.forEach((lead, i) => {
+      const gt = gtLists[Math.min(i, gtLists.length - 1)];
+      const recoveredMv = result.calibration.mvPerUnit != null
+        ? lead.samples.map((s) => s * result.calibration.mvPerUnit)
+        : lead.samples;
+      const match = bestAlignedMatch(zScore(recoveredMv), result.calibration.samplingRate, zScore(Array.from(gt.values)), gt.sampleRate, 2.5);
+      const pass = match.corr >= CORR_PASS_THRESHOLD;
+      allPass = allPass && pass;
+      compareRows.push({ i, lead, match, pass });
+    });
+    badgeClass = allPass ? 'pass' : 'fail';
+    badgeText = allPass ? 'PASS' : 'FAIL (low correlation)';
+
+    metricsHtml = `<div class="metrics">
+      <div><b>ok:</b> ${result.ok} &nbsp; <b>grid.detected:</b> ${result.grid.detected} &nbsp; <b>pxPerMm:</b> ${result.grid.pxPerMm ? result.grid.pxPerMm.toFixed(2) : 'n/a'}</div>
+      <div><b>calibration:</b> source=${result.calibration.source}, samplingRate=${result.calibration.samplingRate}Hz, mvPerUnit=${result.calibration.mvPerUnit ? result.calibration.mvPerUnit.toExponential(3) : 'n/a'}</div>
+      <div><b>leads:</b> ${result.leads.length}</div>
+      ${compareRows.map((r) => `<div>lead ${r.lead.label}: quality=${r.lead.quality.toFixed(2)}, corr=${r.match.corr.toFixed(3)}, rmse(z)=${r.match.rmseZ.toFixed(3)}, shift=${r.match.shiftSec.toFixed(2)}s -> ${r.pass ? 'PASS' : 'FAIL'}</div>`).join('')}
+    </div>`;
+  }
+
+  const header = document.createElement('h2');
+  header.innerHTML = `${name} <span class="badge ${badgeClass}">${badgeText}</span>`;
+  section.appendChild(header);
+
+  const metaEl = document.createElement('div');
+  metaEl.className = 'meta';
+  metaEl.textContent = JSON.stringify(meta);
+  section.appendChild(metaEl);
+
+  section.appendChild(canvases);
+  const metricsWrap = document.createElement('div');
+  metricsWrap.innerHTML = metricsHtml;
+  section.appendChild(metricsWrap);
+
+  if (compareRows.length) {
+    const plots = document.createElement('div');
+    plots.className = 'canvases';
+    compareRows.forEach((r) => addFigure(plots, plotComparison(zScore(r.lead.samples.map((s) => s)), r.match.segment), `${r.lead.label} vs ground truth`));
+    section.appendChild(plots);
+  }
+
+  if (result && result.warnings.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'warnings';
+    result.warnings.forEach((w) => { const li = document.createElement('li'); li.textContent = w; ul.appendChild(li); });
+    section.appendChild(ul);
+  }
+
+  resultsEl.appendChild(section);
+  return { name, badgeText, badgeClass };
+}
+
+function twoLeadPaperImage({ widthPx = 900, pxPerMm = 6, mmPerSecond = 25, mmPerMV = 10, rotationDeg = 0, noiseStd = 3, hrTop = 72, hrBottom = 95 }) {
+  const bandH = 150;
+  const totalH = bandH * 2 + 60;
+  const base = document.createElement('canvas');
+  base.width = widthPx; base.height = totalH;
+  const ctx = base.getContext('2d');
+  ctx.fillStyle = '#efe2d9';
+  ctx.fillRect(0, 0, widthPx, totalH);
+  drawGrid(ctx, widthPx, totalH, pxPerMm, 'rgba(255,150,150,0.55)', 'rgba(240,90,90,0.8)');
+
+  const durationSec = widthPx / (pxPerMm * mmPerSecond) + 0.2;
+  const gtTop = generateGroundTruth({ durationSec, heartRateBpm: hrTop });
+  const gtBottom = generateGroundTruth({ durationSec, heartRateBpm: hrBottom });
+  drawTrace(ctx, widthPx, 20 + bandH * 0.5, pxPerMm, mmPerSecond, mmPerMV, gtTop, '#151515', 2);
+  drawTrace(ctx, widthPx, 40 + bandH * 1.5, pxPerMm, mmPerSecond, mmPerMV, gtBottom, '#151515', 2);
+
+  let finalCanvas = base;
+  if (Math.abs(rotationDeg) > 0.001) {
+    const rad = (rotationDeg * Math.PI) / 180;
+    const newW = Math.round(Math.abs(widthPx * Math.cos(rad)) + Math.abs(totalH * Math.sin(rad)));
+    const newH = Math.round(Math.abs(widthPx * Math.sin(rad)) + Math.abs(totalH * Math.cos(rad)));
+    const rc = document.createElement('canvas');
+    rc.width = newW; rc.height = newH;
+    const rctx = rc.getContext('2d');
+    rctx.fillStyle = '#efe2d9';
+    rctx.fillRect(0, 0, newW, newH);
+    rctx.translate(newW / 2, newH / 2);
+    rctx.rotate(rad);
+    rctx.drawImage(base, -widthPx / 2, -totalH / 2);
+    finalCanvas = rc;
+  }
+  const fctx = finalCanvas.getContext('2d');
+  const imageData = fctx.getImageData(0, 0, finalCanvas.width, finalCanvas.height);
+  if (noiseStd > 0) addNoise(imageData, noiseStd, mulberry32(7));
+  fctx.putImageData(imageData, 0, 0);
+
+  return {
+    imageData,
+    groundTruth: [gtTop, gtBottom],
+    meta: { widthPx, totalH, pxPerMm, mmPerSecond, mmPerMV, rotationDeg, noiseStd, hrTop, hrBottom },
+    options: { mmPerSecond, mmPerMV },
+  };
+}
+
+const scenarios = [
+  ['1. paper, clean, no rotation', {}, () => {
+    const r = renderSyntheticImage({ style: 'paper', pxPerMm: 6, rotationDeg: 0, glare: false, noiseStd: 0 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: { mmPerSecond: r.meta.mmPerSecond, mmPerMV: r.meta.mmPerMV } };
+  }],
+  ['2. paper, rotated 7deg + noise', {}, () => {
+    const r = renderSyntheticImage({ style: 'paper', pxPerMm: 6, rotationDeg: 7, glare: false, noiseStd: 4, seed: 2 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: { mmPerSecond: r.meta.mmPerSecond, mmPerMV: r.meta.mmPerMV } };
+  }],
+  ['3. paper, glare + noise + -4deg rotation', {}, () => {
+    const r = renderSyntheticImage({ style: 'paper', pxPerMm: 6, rotationDeg: -4, glare: true, noiseStd: 8, seed: 3 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: { mmPerSecond: r.meta.mmPerSecond, mmPerMV: r.meta.mmPerMV } };
+  }],
+  ['4. monitor, green trace, no grid', {}, () => {
+    const r = renderSyntheticImage({ style: 'monitor', pxPerMm: 6, rotationDeg: 0, noiseStd: 3, traceColor: '#39ff6a', seed: 4 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: {} };
+  }],
+  ['5. monitor, cyan trace, rotated 10deg', {}, () => {
+    const r = renderSyntheticImage({ style: 'monitor', pxPerMm: 6, rotationDeg: 10, noiseStd: 5, traceColor: '#22e0ff', seed: 5 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: {} };
+  }],
+  ['6. paper, fast HR (steep QRS stress test)', {}, () => {
+    const r = renderSyntheticImage({ style: 'paper', pxPerMm: 6, heartRateBpm: 115, noiseStd: 3, seed: 6 });
+    return { imageData: r.imageData, groundTruth: r.groundTruth, meta: r.meta, options: { mmPerSecond: r.meta.mmPerSecond, mmPerMV: r.meta.mmPerMV } };
+  }],
+  ['7. two-lead paper strip (band separation)', {}, () => twoLeadPaperImage({ rotationDeg: 3, noiseStd: 3 })],
+];
+
+const summary = [];
+for (const [name, expectations, buildFn] of scenarios) {
+  summary.push(runScenario(name, expectations, buildFn));
+}
+summaryEl.textContent = summary.map((s) => `${s.name}: ${s.badgeText}`).join('   |   ');
+</script>
+</body>
+</html>
