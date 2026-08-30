@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ECG Analyzer</title>
+    <meta
+      name="description"
+      content="Client-side ECG strip photo analyzer. Research and educational use only — not a medical device."
+    />
+    <link rel="stylesheet" href="styles/base.css" />
+    <link rel="stylesheet" href="styles/layout.css" />
+    <link rel="stylesheet" href="styles/components.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="app-header">
+        <div class="app-brand">
+          <svg
+            class="app-brand__mark"
+            width="28"
+            height="20"
+            viewBox="0 0 56 28"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M0 20 H14 L18 20 L22 4 L28 24 L32 20 H56"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="app-brand__name">ECG Analyzer</span>
+          <span class="app-brand__version">v0.1 · local</span>
+        </div>
+        <div class="status-led" data-state="idle" role="status" aria-live="polite">
+          <span class="status-led__dot" aria-hidden="true"></span>
+          <span class="status-led__text">Idle</span>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <!-- Upload view -->
+        <section id="upload-view" class="upload-view">
+          <div
+            id="dropzone"
+            class="dropzone"
+            tabindex="0"
+            role="button"
+            aria-label="Upload an ECG strip image. Drop a file here or press Enter to browse."
+          >
+            <svg
+              class="dropzone__mark"
+              width="48"
+              height="24"
+              viewBox="0 0 96 48"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M0 36 H24 L30 36 L38 8 L48 44 L54 36 L60 20 L66 36 H96"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <p class="dropzone__title">Drop an ECG strip image here, or click to browse</p>
+            <p class="dropzone__hint">
+              JPG · PNG · WEBP<span class="sep">·</span>one image<span class="sep">·</span>up to 25&nbsp;MB
+            </p>
+            <input
+              id="file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              class="visually-hidden"
+              aria-hidden="true"
+              tabindex="-1"
+            />
+          </div>
+
+          <div id="status-banner-slot" aria-live="polite"></div>
+
+          <div class="panel" id="calibration-panel">
+            <div class="panel-header">
+              <h2 class="eyebrow">Calibration</h2>
+              <span class="eyebrow" style="color: var(--ink-faint)">used when the strip has no reliable scale</span>
+            </div>
+            <div class="panel-body" id="calibration-fields"></div>
+          </div>
+        </section>
+
+        <!-- Results view -->
+        <section id="results-view" class="results" hidden>
+          <div class="results__header">
+            <h2 class="eyebrow">Analysis</h2>
+            <button type="button" id="replace-btn" class="btn btn--ghost">New image</button>
+          </div>
+
+          <div class="disclaimer" role="note">
+            <svg
+              class="disclaimer__icon"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 3 L22 20 H2 Z"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+              />
+              <path d="M12 9.5 V14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              <circle cx="12" cy="16.8" r="1" fill="currentColor" />
+            </svg>
+            <div>
+              <p class="disclaimer__title">Research &amp; educational use only</p>
+              <p class="disclaimer__body">
+                Not a medical device. Not for diagnosis. Do not use for clinical decisions.
+              </p>
+            </div>
+          </div>
+
+          <div class="preview">
+            <div class="preview__frame">
+              <canvas id="preview-canvas"></canvas>
+            </div>
+            <div class="preview__meta">
+              <span id="preview-filename">—</span>
+              <span id="preview-dimensions">—</span>
+            </div>
+          </div>
+
+          <div id="notices-slot"></div>
+
+          <div id="report-root"></div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <div class="app-footer__inner">
+          <span>All processing runs locally in your browser. Nothing is uploaded.</span>
+          <span>&middot;</span>
+          <span>Research &amp; educational use only — not a medical device.</span>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
