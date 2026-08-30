@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ECG analysis module — dev/test harness</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #0b0e14; color: #e6e6e6; }
+  h1 { font-size: 1.3rem; }
+  #summary { font-size: 1.1rem; margin: 1rem 0; padding: 0.75rem 1rem; border-radius: 6px; }
+  #summary.pass { background: #103b1f; border: 1px solid #2e7d32; }
+  #summary.fail { background: #3b1010; border: 1px solid #b71c1c; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  td, th { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #333; font-size: 0.9rem; }
+  tr.pass td.status { color: #66bb6a; }
+  tr.fail td.status { color: #ef5350; }
+  code { color: #ffab40; }
+  canvas { background: #05070b; border: 1px solid #333; margin-top: 1rem; }
+</style>
+</head>
+<body>
+  <h1>ECG analysis module — verification suite</h1>
+  <div id="summary">Running tests…</div>
+  <table id="resultsTable">
+    <thead><tr><th>Status</th><th>Test</th><th>Detail</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h2 style="margin-top:2rem;">Visual sanity check: synthetic sinus rhythm</h2>
+  <canvas id="plot" width="1100" height="260"></canvas>
+  <p id="plotInfo" style="font-size:0.85rem;color:#aaa;"></p>
+
+<script type="module">
+  import { runAllTests } from './tests.js';
+  import { generateSyntheticECG } from './synthetic.js';
+  import { analyzeLead } from './analyze.js';
+
+  const { results, passCount, failCount, total } = runAllTests();
+
+  const summary = document.getElementById('summary');
+  summary.textContent = `${passCount}/${total} tests passed` + (failCount ? ` — ${failCount} FAILED` : ' — all green');
+  summary.className = failCount ? 'fail' : 'pass';
+
+  const tbody = document.querySelector('#resultsTable tbody');
+  for (const r of results) {
+    const tr = document.createElement('tr');
+    tr.className = r.pass ? 'pass' : 'fail';
+    tr.innerHTML = `<td class="status">${r.pass ? 'PASS' : 'FAIL'}</td><td>${r.name}</td><td><code>${r.message || ''}</code></td>`;
+    tbody.appendChild(tr);
+  }
+
+  console.log(`ECG analysis tests: ${passCount}/${total} passed`);
+  for (const r of results) {
+    if (!r.pass) console.error(`FAIL: ${r.name} — ${r.message}`);
+  }
+
+  // Visual sanity check: plot a clean synthetic beat train with detected R peaks.
+  const { samples, samplingRate } = generateSyntheticECG({
+    samplingRate: 250,
+    durationSec: 6,
+    heartRateBpm: 72,
+    prMs: 160,
+    qrsMs: 90,
+    qtMs: 380,
+    baselineWanderMv: 0.15,
+    noiseStdMv: 0.02,
+  });
+  const result = analyzeLead(samples, samplingRate, { mvPerUnit: 1 });
+
+  const canvas = document.getElementById('plot');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  let min = Infinity, max = -Infinity;
+  for (const v of samples) { if (v < min) min = v; if (v > max) max = v; }
+  const pad = (max - min) * 0.1 || 1;
+  const toY = (v) => h - ((v - (min - pad)) / ((max - min) + 2 * pad)) * h;
+  const toX = (i) => (i / samples.length) * w;
+
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  samples.forEach((v, i) => {
+    const x = toX(i), y = toY(v);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#ef5350';
+  for (const beat of result.beats) {
+    const x = toX(beat.rIndex);
+    const y = toY(samples[beat.rIndex]);
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  document.getElementById('plotInfo').textContent =
+    `Detected ${result.beats.length} beats, HR=${result.heartRate.bpm?.toFixed(1)} bpm, ` +
+    `rhythm=${result.rhythm.classification}, PR=${result.intervals.prMs.mean?.toFixed(0)}ms, ` +
+    `QRS=${result.intervals.qrsMs.mean?.toFixed(0)}ms, QT=${result.intervals.qtMs.mean?.toFixed(0)}ms, ` +
+    `QTc=${result.intervals.qtcMs.mean?.toFixed(0)}ms (${result.intervals.qtcMs.formula})`;
+</script>
+</body>
+</html>
